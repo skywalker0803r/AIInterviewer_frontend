@@ -316,20 +316,17 @@ $(document).ready(function () {
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunks.push(event.data); // Collect chunks
+          ws.send(event.data); // Send each chunk immediately
         }
       };
       mediaRecorder.onstop = () => {
-        console.log("Recording stopped. Combining audio chunks and sending to backend.");
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        console.log("Recording stopped. Final chunk sent (if any).");
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(audioBlob); // Send the complete Blob
-          ws.send(JSON.stringify({ type: "end_of_speech" })); // Still send the signal
-          console.log("Sent complete audio Blob and end_of_speech signal to backend.");
+          ws.send(JSON.stringify({ type: "end_of_speech" }));
+          console.log("Sent end_of_speech signal to backend.");
         }
-        audioChunks = []; // Clear chunks after sending
       };
-      mediaRecorder.start(); // Start recording, no interval needed for sending chunks
+      mediaRecorder.start(1000); // Start recording and send data every 1 second (1000ms)
       $(this).text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
       console.log("Recording started.");
     }
