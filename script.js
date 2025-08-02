@@ -162,7 +162,28 @@ $(document).ready(function () {
           $('#start-interview').prop('disabled', false).text("開始模擬面試");
           $('#record-btn').hide(); // Hide the record button
           $('#end-interview').hide(); // Hide the end interview button
-          if (!interviewEndedByBackend) { // Only reset UI if not ended by backend
+
+          if (!interviewEndedByBackend && sessionId) { // If not ended by backend and session ID exists, try to get report
+            $('#chat-box').append("<p class='text-green-500'>連線中斷，正在嘗試獲取面試報告...</p>");
+            console.log(`Attempting to get interview report for session ID: ${sessionId} (onclose)`);
+            $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
+              .done(function(report) {
+                console.log("Successfully received interview report (onclose):", report);
+                displayReport(report);
+              })
+              .fail(function(err) {
+                console.error("Failed to get interview report (onclose):", err);
+                $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
+                $('#report-section').removeClass('hidden');
+                $('#restart-interview').show();
+              })
+              .always(function() {
+                // Always reset session data after report attempt
+                $('#selected-job').text("");
+                selectedJob = null;
+                sessionId = null;
+              });
+          } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
             $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
             $('#selected-job').text("");
             selectedJob = null;
@@ -258,7 +279,28 @@ $(document).ready(function () {
             $('#start-interview').prop('disabled', false).text("開始模擬面試");
             $('#record-btn').hide(); // Hide the record button
             $('#end-interview').hide(); // Hide the end interview button
-            if (!interviewEndedByBackend) { // Only reset UI if not ended by backend
+
+            if (!interviewEndedByBackend && sessionId) { // If not ended by backend and session ID exists, try to get report
+              $('#chat-box').append("<p class='text-green-500'>連線中斷，正在嘗試獲取面試報告...</p>");
+              console.log(`Attempting to get interview report for session ID: ${sessionId} (onclose audio-only)`);
+              $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
+                .done(function(report) {
+                  console.log("Successfully received interview report (onclose audio-only):", report);
+                  displayReport(report);
+                })
+                .fail(function(err) {
+                  console.error("Failed to get interview report (onclose audio-only):", err);
+                  $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
+                  $('#report-section').removeClass('hidden');
+                  $('#restart-interview').show();
+                })
+                .always(function() {
+                  // Always reset session data after report attempt
+                  $('#selected-job').text("");
+                  selectedJob = null;
+                  sessionId = null;
+                });
+            } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
               $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
               $('#selected-job').text("");
               selectedJob = null;
