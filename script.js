@@ -77,7 +77,11 @@ $(document).ready(function () {
         const ttsAudio = $('#tts-audio')[0];
         ttsAudio.src = res.audio_url;
         ttsAudio.load();
-        ttsAudio.play();
+        ttsAudio.play().catch(error => {
+          console.error("Initial audio playback failed:", error);
+          console.log("Audio networkState:", ttsAudio.networkState);
+          console.log("Audio readyState:", ttsAudio.readyState);
+        });
       }
 
       // Establish WebSocket connection after getting session ID
@@ -112,7 +116,11 @@ $(document).ready(function () {
               const ttsAudio = $('#tts-audio')[0];
               ttsAudio.src = data.audio_url;
               ttsAudio.load();
-              ttsAudio.play();
+              ttsAudio.play().catch(error => {
+                console.error("WebSocket audio playback failed:", error);
+                console.log("Audio networkState:", ttsAudio.networkState);
+                console.log("Audio readyState:", ttsAudio.readyState);
+              });
             }
             if (data.interview_ended) {
               console.log("Interview ended signal received from backend (audio-only).");
@@ -195,7 +203,11 @@ $(document).ready(function () {
               const ttsAudio = $('#tts-audio')[0];
               ttsAudio.src = data.audio_url;
               ttsAudio.load();
-              ttsAudio.play();
+              ttsAudio.play().catch(error => {
+                console.error("WebSocket audio playback failed:", error);
+                console.log("Audio networkState:", ttsAudio.networkState);
+                console.log("Audio readyState:", ttsAudio.readyState);
+              });
             }
             if (data.interview_ended) {
               console.log("Interview ended signal received from backend (audio-only).");
