@@ -291,20 +291,15 @@ $(document).ready(function () {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorder.ondataavailable = (event) => {
-        console.log("ondataavailable event.data size:", event.data.size, "bytes");
-        audioChunks.push(event.data);
+        if (event.data.size > 0) {
+          ws.send(event.data); // Send each chunk immediately
+        }
       };
       mediaRecorder.onstop = () => {
-        console.log("mediaRecorder onstop triggered.");
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        console.log("Audio Blob size (onstop):", audioBlob.size, "bytes");
-        if (audioBlob.size > 0) {
-          ws.send(audioBlob);
-          appendToChat("🗣️ 你", "正在處理您的語音..."); // Placeholder for user's speech
-        }
-        audioChunks = []; // Clear chunks
+        console.log("Recording stopped. Final chunk sent (if any).");
+        audioChunks = []; // Ensure chunks are cleared
       };
-      mediaRecorder.start(); // Start recording without time slicing
+      mediaRecorder.start(1000); // Start recording and send data every 1 second (1000ms)
       $(this).text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
       console.log("Recording started.");
     }
