@@ -8,6 +8,7 @@ let mediaRecorder = null;
 let audioChunks = [];
 let sessionId = null; // New: To store the session ID
 let interviewEndedByBackend = false; // New: Flag to indicate if interview ended by backend signal
+let videoCaptureInterval = null; // New: To store the video capture interval ID
 
 $(document).ready(function () {
   $('#search-btn').on('click', async function () {
@@ -99,6 +100,21 @@ $(document).ready(function () {
           console.log("WebSocket connected");
           $('#record-btn').show(); // Show the record button
           $('#end-interview').show(); // Show the end interview button
+
+          // Start sending video frames
+          videoCaptureInterval = setInterval(() => {
+            const video = document.getElementById('webcam');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageDataURL = canvas.toDataURL('image/jpeg', 0.8); // Convert to JPEG with 80% quality
+            // Send as a JSON message with a specific type
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "video_frame", data: imageDataURL }));
+            }
+          }, 1000); // Send every 1 second
         };
 
         ws.onmessage = (event) => {
@@ -149,6 +165,10 @@ $(document).ready(function () {
           if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
           }
+          if (videoCaptureInterval) {
+            clearInterval(videoCaptureInterval);
+            videoCaptureInterval = null;
+          }
           $('#start-interview').prop('disabled', false).text("開始模擬面試");
           $('#record-btn').hide(); // Hide the record button
           $('#end-interview').hide(); // Hide the end interview button
@@ -166,6 +186,10 @@ $(document).ready(function () {
           alert("WebSocket 連線錯誤，請檢查後端服務");
           if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
+          }
+          if (videoCaptureInterval) {
+            clearInterval(videoCaptureInterval);
+            videoCaptureInterval = null;
           }
           $('#start-interview').prop('disabled', false).text("開始模擬面試");
           $('#record-btn').hide(); // Hide the record button
