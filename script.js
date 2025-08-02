@@ -1,5 +1,5 @@
-const BACKEND_BASE_URL = "https://bc3a48b9b3cc.ngrok-free.app";
-const BACKEND_WS_URL = "wss://bc3a48b9b3cc.ngrok-free.app";
+const BACKEND_BASE_URL = "https://aiinterviewer-backend-924124779607.asia-east1.run.app";
+const BACKEND_WS_URL = "wss://aiinterviewer-backend-924124779607.asia-east1.run.app";
 
 let selectedJob = null;
 let streamMode = "none";
