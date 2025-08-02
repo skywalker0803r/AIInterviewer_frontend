@@ -321,7 +321,10 @@ $(document).ready(function () {
       };
       mediaRecorder.onstop = () => {
         console.log("Recording stopped. Final chunk sent (if any).");
-        audioChunks = []; // Ensure chunks are cleared
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "end_of_speech" }));
+          console.log("Sent end_of_speech signal to backend.");
+        }
       };
       mediaRecorder.start(1000); // Start recording and send data every 1 second (1000ms)
       $(this).text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
