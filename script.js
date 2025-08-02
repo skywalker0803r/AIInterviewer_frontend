@@ -74,7 +74,10 @@ $(document).ready(function () {
       }
 
       if (res && res.audio_url) {
-        $('#tts-audio').attr("src", res.audio_url)[0].play();
+        const ttsAudio = $('#tts-audio')[0];
+        ttsAudio.src = res.audio_url;
+        ttsAudio.load();
+        ttsAudio.play();
       }
 
       // Establish WebSocket connection after getting session ID
@@ -106,7 +109,10 @@ $(document).ready(function () {
               }
             }
             if (data.audio_url) {
-              $('#tts-audio').attr("src", data.audio_url)[0].play();
+              const ttsAudio = $('#tts-audio')[0];
+              ttsAudio.src = data.audio_url;
+              ttsAudio.load();
+              ttsAudio.play();
             }
             if (data.interview_ended) {
               console.log("Interview ended signal received from backend (audio-only).");
@@ -186,7 +192,10 @@ $(document).ready(function () {
               }
             }
             if (data.audio_url) {
-              $('#tts-audio').attr("src", data.audio_url)[0].play();
+              const ttsAudio = $('#tts-audio')[0];
+              ttsAudio.src = data.audio_url;
+              ttsAudio.load();
+              ttsAudio.play();
             }
             if (data.interview_ended) {
               console.log("Interview ended signal received from backend (audio-only).");
