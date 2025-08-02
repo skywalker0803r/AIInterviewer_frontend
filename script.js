@@ -141,6 +141,11 @@ $(document).ready(function () {
                   $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
                   $('#report-section').removeClass('hidden');
                   $('#restart-interview').show();
+                })
+                .always(function() {
+                  if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close(); // Explicitly close WebSocket after report fetching
+                  }
                 });
             }
           };
@@ -236,6 +241,11 @@ $(document).ready(function () {
                   $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
                   $('#report-section').removeClass('hidden');
                   $('#restart-interview').show();
+                })
+                .always(function() {
+                  if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close(); // Explicitly close WebSocket after report fetching
+                  }
                 });
             }
           };
