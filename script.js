@@ -200,15 +200,43 @@ function startRecording() {
     }
     console.log("userMediaStream is available.", userMediaStream);
 
-    mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: 'audio/webm' });
-    audioChunks = []; // Clear previous chunks
-    mediaRecorder.ondataavailable = event => {
-        if (event.data.size > 0) audioChunks.push(event.data);
-    };
-    mediaRecorder.onstop = handleRecordingStop;
-    mediaRecorder.start();
-    console.log("MediaRecorder started. Updating button text and class.");
+    // --- Update button state immediately ---
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
+    $('#record-btn').prop('disabled', true); // Temporarily disable to prevent double click
+
+    let mimeType = 'audio/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.warn(`${mimeType} is not supported, trying audio/mp4.`);
+        mimeType = 'audio/mp4'; // Common alternative
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            console.warn(`${mimeType} is not supported, trying audio/ogg.`);
+            mimeType = 'audio/ogg'; // Another common alternative
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                console.error("No supported audio MIME type found for MediaRecorder.");
+                alert("您的瀏覽器不支持任何可用的音訊錄製格式。");
+                $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+                return;
+            }
+        }
+    }
+    console.log(`Using MIME type: ${mimeType}`);
+
+    try {
+        mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: mimeType });
+        audioChunks = []; // Clear previous chunks
+        mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onstop = handleRecordingStop;
+        mediaRecorder.start();
+        console.log("MediaRecorder started successfully.");
+        $('#record-btn').prop('disabled', false); // Re-enable button after successful start
+    } catch (e) {
+        console.error("Error starting MediaRecorder:", e);
+        alert(`無法啟動錄音：${e.message}。請檢查麥克風設定或嘗試其他瀏覽器。`);
+        // Revert button state on error
+        $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+    }
 }
 
 async function handleRecordingStop() {
