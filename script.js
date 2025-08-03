@@ -8,6 +8,7 @@ let audioChunks = [];
 let currentSessionId = null;
 let currentQuestionNumber = 0;
 let totalQuestions = 0;
+let userMediaStream = null; // New global variable to store the media stream
 
 // --- DOM Ready ---
 $(document).ready(function () {
@@ -109,6 +110,19 @@ async function handleStartInterview() {
     $('#chat-box').html("<p class='text-blue-500'>⏳ 正在為您客製化面試問題，請稍候...</p>");
 
     try {
+        // Try to get both audio and video
+        try {
+            userMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            const webcamVideo = $('#webcam')[0];
+            webcamVideo.srcObject = userMediaStream;
+            $('#video-section').removeClass('hidden');
+        } catch (videoErr) {
+            console.warn("無法取得攝影機權限或沒有攝影機，嘗試純音訊模式：", videoErr);
+            // If video fails, try to get only audio
+            userMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            $('#video-section').addClass('hidden'); // Hide video section if only audio
+        }
+
         const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description });
         
         currentSessionId = res.session_id;
@@ -124,9 +138,16 @@ async function handleStartInterview() {
         $('#start-interview').text("面試進行中...");
 
     } catch (err) {
-        console.error("啟動面試失敗：", err);
+        console.error("啟動面試失敗或無法取得麥克風權限：", err);
+        alert("啟動面試失敗或無法取得麥克風權限，請檢查瀏覽器設定並允許權限。");
         $('#chat-box').html("<p class='text-red-500'>❌ 面試啟動失敗，請檢查後端服務或網路連線。</p>");
         $('#start-interview').prop('disabled', false).text("開始模擬面試");
+        // Clean up stream if it was partially obtained
+        if (userMediaStream) {
+            userMediaStream.getTracks().forEach(track => track.stop());
+            userMediaStream = null;
+        }
+        $('#video-section').addClass('hidden');
     }
 }
 
@@ -166,53 +187,43 @@ function handleRestartInterview() {
 // --- Media & UI Functions ---
 
 function startRecording() {
-    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-        .then(stream => {
-            // Display video stream
-            const webcamVideo = $('#webcam')[0];
-            webcamVideo.srcObject = stream;
-            $('#video-section').removeClass('hidden');
+    if (!userMediaStream) {
+        alert("麥克風或攝影機未準備好。請先開始面試並允許權限。");
+        return;
+    }
 
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-            audioChunks = []; // Clear previous chunks
-            mediaRecorder.ondataavailable = event => {
-                if (event.data.size > 0) audioChunks.push(event.data);
-            };
-            mediaRecorder.onstop = handleRecordingStop;
-            mediaRecorder.start();
-            $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
-        })
-        .catch(err => {
-            console.error("無法取得麥克風或攝影機權限:", err);
-            alert("無法取得麥克風或攝影機權限，請檢查瀏覽器設定。");
-        });
+    mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: 'audio/webm' });
+    audioChunks = []; // Clear previous chunks
+    mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+    };
+    mediaRecorder.onstop = handleRecordingStop;
+    mediaRecorder.start();
+    $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
 }
 
 async function handleRecordingStop() {
     $('#record-btn').text("處理中...").prop('disabled', true);
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
 
-    // Capture a frame from the video stream
+    let imageDataURL = ""; // Initialize with empty string
     const webcamVideo = $('#webcam')[0];
-    const canvas = document.createElement('canvas');
-    canvas.width = webcamVideo.videoWidth;
-    canvas.height = webcamVideo.videoHeight;
-    const context = canvas.getContext('2d');
-    context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
-    const imageDataURL = canvas.toDataURL('image/jpeg').split(',')[1]; // Get JPEG data URL and remove prefix
 
-    // Stop all tracks to turn off camera/mic
-    if (webcamVideo.srcObject) {
-        webcamVideo.srcObject.getTracks().forEach(track => track.stop());
-        webcamVideo.srcObject = null;
+    // Only capture image if video stream is active and has dimensions
+    if (userMediaStream && userMediaStream.getVideoTracks().length > 0 && webcamVideo.videoWidth > 0 && webcamVideo.videoHeight > 0) {
+        const canvas = document.createElement('canvas');
+        canvas.width = webcamVideo.videoWidth;
+        canvas.height = webcamVideo.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+        imageDataURL = canvas.toDataURL('image/jpeg').split(',')[1]; // Get JPEG data URL and remove prefix
     }
-    $('#video-section').addClass('hidden');
 
     try {
         const formData = new FormData();
         formData.append('session_id', currentSessionId);
         formData.append('audio_file', audioBlob, 'user_answer.webm');
-        formData.append('image_data', imageDataURL); // Append image data
+        formData.append('image_data', imageDataURL); // Append image data (can be empty)
 
         const res = await $.ajax({
             url: `${BACKEND_BASE_URL}/submit_answer_and_get_next_question`,
@@ -236,6 +247,12 @@ async function handleRecordingStop() {
             $('#end-interview').hide();
             const report = await api_getReport(currentSessionId);
             displayReport(report);
+            // Interview ended, so clean up stream
+            if (userMediaStream) {
+                userMediaStream.getTracks().forEach(track => track.stop());
+                userMediaStream = null;
+            }
+            $('#video-section').addClass('hidden');
         } else {
             // Handle next question
             currentQuestionNumber++;
@@ -316,4 +333,11 @@ function resetUIForNewInterview() {
     currentQuestionNumber = 0;
     totalQuestions = 0;
     updateInterviewProgress();
+
+    // Stop all tracks and clear the stream when resetting UI
+    if (userMediaStream) {
+        userMediaStream.getTracks().forEach(track => track.stop());
+        userMediaStream = null;
+    }
+    $('#video-section').addClass('hidden');
 }
