@@ -230,7 +230,7 @@ function appendToChat(speaker, message) {
 
 function playAudio(audioUrl) {
     const ttsAudio = $('#tts-audio')[0];
-    ttsAudio.src = `${BACKEND_BASE_URL}${audioUrl}`;
+    ttsAudio.src = audioUrl;
     ttsAudio.load();
     ttsAudio.play().catch(error => console.error("Audio playback failed:", error));
 }
