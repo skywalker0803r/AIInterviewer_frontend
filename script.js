@@ -9,6 +9,8 @@ let audioChunks = [];
 let sessionId = null; // New: To store the session ID
 let interviewEndedByBackend = false; // New: Flag to indicate if interview ended by backend signal
 let videoCaptureInterval = null; // New: To store the video capture interval ID
+let currentQuestionNumber = 0; // New: To track current question number
+let totalQuestions = 0; // New: To store total number of questions
 
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 let heartbeatIntervalId = null;
@@ -95,6 +97,9 @@ $(document).ready(function () {
       if (res && res.text) {
         appendToChat("🤖 AI 面試官", res.text);
         sessionId = res.session_id; // Store the session ID
+        totalQuestions = res.total_questions; // Store total questions
+        currentQuestionNumber = 1; // Initialize current question number
+        updateInterviewProgress(); // Update progress display
       }
 
       if (res && res.audio_url) {
@@ -135,6 +140,10 @@ $(document).ready(function () {
                 appendToChat("🗣️ 你", data.text);
               } else {
                 appendToChat("🤖 AI 面試官", data.text);
+                if (!data.interview_ended) { // Only increment if it's a new question, not the final message
+                  currentQuestionNumber++;
+                  updateInterviewProgress();
+                }
               }
             }
             if (data.audio_url) {
@@ -207,12 +216,18 @@ $(document).ready(function () {
                 $('#selected-job').text("");
                 selectedJob = null;
                 sessionId = null;
+                currentQuestionNumber = 0; // Reset for new interview
+                totalQuestions = 0; // Reset for new interview
+                updateInterviewProgress(); // Clear progress display
               });
           } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
             $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
             $('#selected-job').text("");
             selectedJob = null;
             sessionId = null;
+            currentQuestionNumber = 0; // Reset for new interview
+            totalQuestions = 0; // Reset for new interview
+            updateInterviewProgress(); // Clear progress display
           }
           interviewEndedByBackend = false; // Reset the flag
         };
@@ -259,6 +274,10 @@ $(document).ready(function () {
                 appendToChat("🗣️ 你", data.text);
               } else {
                 appendToChat("🤖 AI 面試官", data.text);
+                if (!data.interview_ended) { // Only increment if it's a new question, not the final message
+                  currentQuestionNumber++;
+                  updateInterviewProgress();
+                }
               }
             }
             if (data.audio_url) {
@@ -327,12 +346,18 @@ $(document).ready(function () {
                   $('#selected-job').text("");
                   selectedJob = null;
                   sessionId = null;
+                  currentQuestionNumber = 0; // Reset for new interview
+                  totalQuestions = 0; // Reset for new interview
+                  updateInterviewProgress(); // Clear progress display
                 });
             } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
               $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
               $('#selected-job').text("");
               selectedJob = null;
               sessionId = null;
+              currentQuestionNumber = 0; // Reset for new interview
+              totalQuestions = 0; // Reset for new interview
+              updateInterviewProgress(); // Clear progress display
             }
             interviewEndedByBackend = false; // Reset the flag
           };
@@ -436,6 +461,9 @@ $(document).ready(function () {
       $('#selected-job').text("");
       selectedJob = null;
       sessionId = null;
+      currentQuestionNumber = 0; // Reset for new interview
+      totalQuestions = 0; // Reset for new interview
+      updateInterviewProgress(); // Clear progress display
     }
     interviewEndedByBackend = false; // Reset the flag for the next interview
   });
@@ -450,6 +478,9 @@ $(document).ready(function () {
     $('#selected-job').text("");
     selectedJob = null;
     sessionId = null;
+    currentQuestionNumber = 0; // Reset for new interview
+    totalQuestions = 0; // Reset for new interview
+    updateInterviewProgress(); // Clear progress display
   });
 });
 
@@ -477,4 +508,12 @@ function displayReport(report) {
   $('#report-content').html(reportHtml);
   $('#report-section').removeClass('hidden');
   $('#restart-interview').show();
+}
+
+function updateInterviewProgress() {
+  if (totalQuestions > 0 && currentQuestionNumber <= totalQuestions) {
+    $('#interview-progress').text(`問題 ${currentQuestionNumber} / ${totalQuestions}`);
+  } else {
+    $('#interview-progress').text("");
+  }
 }
