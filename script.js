@@ -199,7 +199,7 @@ async function handleRecordingStop() {
     canvas.height = webcamVideo.videoHeight;
     const context = canvas.getContext('2d');
     context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
-    const imageDataURL = canvas.toDataURL('image/jpeg'); // Get JPEG data URL
+    const imageDataURL = canvas.toDataURL('image/jpeg').split(',')[1]; // Get JPEG data URL and remove prefix
 
     // Stop all tracks to turn off camera/mic
     if (webcamVideo.srcObject) {
