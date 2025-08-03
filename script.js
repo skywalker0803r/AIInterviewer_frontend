@@ -1,515 +1,286 @@
 const BACKEND_BASE_URL = "https://aiinterviewer-backend-924124779607.asia-east1.run.app";
-const BACKEND_WS_URL = "wss://aiinterviewer-backend-924124779607.asia-east1.run.app";
 
+// --- Global State ---
 let selectedJob = null;
-let streamMode = "none";
-let ws = null; // WebSocket instance
 let mediaRecorder = null;
 let audioChunks = [];
-let sessionId = null; // New: To store the session ID
-let interviewEndedByBackend = false; // New: Flag to indicate if interview ended by backend signal
-let videoCaptureInterval = null; // New: To store the video capture interval ID
-let currentQuestionNumber = 0; // New: To track current question number
-let totalQuestions = 0; // New: To store total number of questions
+let currentSessionId = null;
+let currentQuestionNumber = 0;
+let totalQuestions = 0;
 
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-let heartbeatIntervalId = null;
-
-function startHeartbeat() {
-  if (heartbeatIntervalId) {
-    clearInterval(heartbeatIntervalId);
-  }
-  heartbeatIntervalId = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ping" }));
-      console.log("Sent WebSocket ping.");
-    }
-  }, HEARTBEAT_INTERVAL);
-}
-
-function stopHeartbeat() {
-  if (heartbeatIntervalId) {
-    clearInterval(heartbeatIntervalId);
-    heartbeatIntervalId = null;
-    console.log("Stopped WebSocket heartbeat.");
-  }
-}
-
+// --- DOM Ready ---
 $(document).ready(function () {
-  $('#search-btn').on('click', async function () {
+    // --- Event Listeners ---
+    $('#search-btn').on('click', handleSearchJobs);
+    $('#start-interview').on('click', handleStartInterview);
+    $('#record-btn').on('click', toggleRecording);
+    $('#end-interview').on('click', handleEndInterview);
+    $('#restart-interview').on('click', handleRestartInterview);
+    // Dynamically bind click event for job list items
+    $('#job-list').on('click', 'div', handleSelectJob);
+});
+
+// --- API Communication Functions ---
+
+async function api_getJobs(keyword) {
+    return await $.get(`${BACKEND_BASE_URL}/jobs?keyword=${encodeURIComponent(keyword)}`);
+}
+
+async function api_startInterview(jobData) {
+    return await $.ajax({
+        url: `${BACKEND_BASE_URL}/start_interview`,
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify(jobData)
+    });
+}
+
+async function api_submitAnswer(sessionId, audioBlob) {
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('audio_file', audioBlob, 'user_answer.webm');
+
+    return await $.ajax({
+        url: `${BACKEND_BASE_URL}/submit_answer_and_get_next_question`,
+        method: "POST",
+        data: formData,
+        processData: false,
+        contentType: false
+    });
+}
+
+async function api_getReport(sessionId) {
+    return await $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`);
+}
+
+async function api_endInterview(sessionId) {
+    return await $.ajax({
+        url: `${BACKEND_BASE_URL}/end_interview`,
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ session_id: sessionId })
+    });
+}
+
+// --- Event Handlers ---
+
+async function handleSearchJobs() {
     const keyword = $('#job-input').val().trim();
     if (!keyword) return alert("請輸入職缺名稱");
 
     $('#job-list').html("<p class='text-gray-500'>正在搜尋中...</p>");
-
     try {
-      const res = await $.get(`${BACKEND_BASE_URL}/jobs?keyword=${encodeURIComponent(keyword)}`);
-      const jobs = res.jobs;
-      if (!jobs || jobs.length === 0) {
-        $('#job-list').html("<p class='text-red-500'>查無職缺</p>");
-        return;
-      }
-
-      const list = jobs.map((job, i) => `
-        <div class="border p-3 rounded-lg cursor-pointer hover:bg-gray-100" data-index="${i}">
-          <p class="font-bold">${job.title}</p>
-          <p class="text-sm text-gray-600">${job.company}</p>
-          <a href="${job.url}" target="_blank" class="text-blue-500 text-sm underline">查看職缺</a>
-        </div>
-      `).join('');
-
-      $('#job-list').html(list);
-
-      $('#job-list div').on('click', function () {
-        const index = $(this).data('index');
-        selectedJob = jobs[index];
-        $('#selected-job').text(`✅ 已選擇職缺：${selectedJob.title} @ ${selectedJob.company}`);
-        console.log("Selected Job Description:", selectedJob.description); // Add this line to verify
-      });
-
+        const res = await api_getJobs(keyword);
+        const jobs = res.jobs;
+        if (!jobs || jobs.length === 0) {
+            $('#job-list').html("<p class='text-red-500'>查無職缺</p>");
+            return;
+        }
+        // Store jobs data on a parent element to access later
+        $('#job-list').data('jobs', jobs);
+        const list = jobs.map((job, i) => `
+            <div class="border p-3 rounded-lg cursor-pointer hover:bg-gray-100" data-index="${i}">
+              <p class="font-bold">${job.title}</p>
+              <p class="text-sm text-gray-600">${job.company}</p>
+              <a href="${job.url}" target="_blank" class="text-blue-500 text-sm underline">查看職缺</a>
+            </div>
+        `).join('');
+        $('#job-list').html(list);
     } catch (err) {
-      console.error("職缺搜尋失敗：", err);
-      $('#job-list').html("<p class='text-red-500'>搜尋錯誤，請稍後再試</p>");
+        console.error("職缺搜尋失敗：", err);
+        $('#job-list').html("<p class='text-red-500'>搜尋錯誤，請稍後再試</p>");
     }
-  });
+}
 
-  $('#start-interview').on('click', async function () {
+function handleSelectJob() {
+    const index = $(this).data('index');
+    const jobs = $('#job-list').data('jobs');
+    selectedJob = jobs[index];
+    $('#selected-job').text(`✅ 已選擇職缺：${selectedJob.title} @ ${selectedJob.company}`);
+}
+
+async function handleStartInterview() {
     if (!selectedJob) {
-      alert("請先選擇一個職缺再開始面試");
-      return;
+        return alert("請先選擇一個職缺再開始面試");
     }
 
-    // Disable the start button to prevent multiple clicks
-    $('#start-interview').prop('disabled', true).text("面試進行中...");
+    $('#start-interview').prop('disabled', true).text("面試準備中...");
+    $('#chat-box').html("<p class='text-blue-500'>⏳ 正在為您客製化面試問題，請稍候...</p>");
 
-    $('#chat-box').html("<p class='text-blue-500'>⏳ 等待 AI 面試官回覆...</p>");
-    // $('#report-section').addClass('hidden'); // Hide report section on new interview - Removed as per user request
-
-    // Initial POST request for the first question
     try {
-      const res = await $.ajax({
-        url: `${BACKEND_BASE_URL}/start_interview`,
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ job: selectedJob, job_description: selectedJob.description })
-      });
+        const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description });
+        
+        currentSessionId = res.session_id;
+        totalQuestions = res.first_question.total_questions;
+        currentQuestionNumber = 1;
 
-      if (res && res.text) {
-        appendToChat("🤖 AI 面試官", res.text);
-        sessionId = res.session_id; // Store the session ID
-        totalQuestions = res.total_questions; // Store total questions
-        currentQuestionNumber = 1; // Initialize current question number
-        updateInterviewProgress(); // Update progress display
-      }
+        appendToChat("🤖 AI 面試官", res.first_question.text);
+        playAudio(res.first_question.audio_url);
+        updateInterviewProgress();
 
-      if (res && res.audio_url) {
-        const ttsAudio = $('#tts-audio')[0];
-        ttsAudio.src = res.audio_url;
-        ttsAudio.load();
-        ttsAudio.play().catch(error => {
-          console.error("Initial audio playback failed:", error);
-          console.log("Audio networkState:", ttsAudio.networkState);
-          console.log("Audio readyState:", ttsAudio.readyState);
-        });
-      }
-
-      // Establish WebSocket connection after getting session ID
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        streamMode = "視訊 + 語音";
-        $('#mode-label').text(`目前模式：${streamMode}`);
-        $('#video-section').removeClass('hidden');
-        document.getElementById('webcam').srcObject = stream;
-
-        // Initialize WebSocket with session ID
-        ws = new WebSocket(`${BACKEND_WS_URL}/ws?session_id=${sessionId}`);
-
-        ws.onopen = () => {
-          console.log("WebSocket connected");
-          $('#record-btn').show(); // Show the record button
-          $('#end-interview').show(); // Show the end interview button
-          startHeartbeat(); // Start heartbeat
-        };
-
-        ws.onmessage = (event) => {
-            console.log("Raw WebSocket message (audio-only):", event.data);
-            const data = JSON.parse(event.data);
-            console.log("Parsed WebSocket data (audio-only):", data);
-            if (data.text) {
-              if (data.speaker === "你") {
-                appendToChat("🗣️ 你", data.text);
-              } else {
-                appendToChat("🤖 AI 面試官", data.text);
-                if (!data.interview_ended) { // Only increment if it's a new question, not the final message
-                  currentQuestionNumber++;
-                  updateInterviewProgress();
-                }
-              }
-            }
-            if (data.audio_url) {
-              const ttsAudio = $('#tts-audio')[0];
-              ttsAudio.src = data.audio_url;
-              ttsAudio.load();
-              ttsAudio.play().catch(error => {
-                console.error("WebSocket audio playback failed:", error);
-                console.log("Audio networkState:", ttsAudio.networkState);
-                console.log("Audio readyState:", ttsAudio.readyState);
-              });
-            }
-            if (data.interview_ended) {
-              console.log("Interview ended signal received from backend (audio-only).");
-              interviewEndedByBackend = true; // Set the flag immediately
-              $('#record-btn').hide();
-              $('#end-interview').prop('disabled', true); // Disable the end interview button
-              $('#chat-box').append("<p class='text-green-500'>面試結束，正在生成報告...</p>");
-              console.log(`Attempting to get interview report for session ID: ${sessionId} (audio-only)`);
-              // Call backend to get report
-              $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
-                .done(function(report) {
-                  console.log("Successfully received interview report (audio-only):", report);
-                  displayReport(report);
-                })
-                .fail(function(err) {
-                  console.error("Failed to get interview report (audio-only):", err);
-                  $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
-                  $('#report-section').removeClass('hidden');
-                  $('#restart-interview').show();
-                })
-                .always(function() {
-                  // Frontend no longer explicitly closes WebSocket here; backend will close it.
-                });
-            }
-          };
-
-        ws.onclose = () => {
-          console.log("WebSocket disconnected. interviewEndedByBackend:", interviewEndedByBackend);
-          stopHeartbeat(); // Stop heartbeat
-          if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-          }
-          if (videoCaptureInterval) {
-            clearInterval(videoCaptureInterval);
-            videoCaptureInterval = null;
-          }
-          $('#start-interview').prop('disabled', false).text("開始模擬面試");
-          $('#record-btn').hide(); // Hide the record button
-          $('#end-interview').hide(); // Hide the end interview button
-
-          if (!interviewEndedByBackend && sessionId) { // If not ended by backend and session ID exists, try to get report
-            $('#chat-box').append("<p class='text-green-500'>連線中斷，正在嘗試獲取面試報告...</p>");
-            console.log(`Attempting to get interview report for session ID: ${sessionId} (onclose)`);
-            $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
-              .done(function(report) {
-                console.log("Successfully received interview report (onclose):", report);
-                displayReport(report);
-              })
-              .fail(function(err) {
-                console.error("Failed to get interview report (onclose):", err);
-                $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
-                $('#report-section').removeClass('hidden');
-                $('#restart-interview').show();
-              })
-              .always(function() {
-                // Always reset session data after report attempt
-                $('#selected-job').text("");
-                selectedJob = null;
-                sessionId = null;
-                currentQuestionNumber = 0; // Reset for new interview
-                totalQuestions = 0; // Reset for new interview
-                updateInterviewProgress(); // Clear progress display
-              });
-          } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
-            $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
-            $('#selected-job').text("");
-            selectedJob = null;
-            sessionId = null;
-            currentQuestionNumber = 0; // Reset for new interview
-            totalQuestions = 0; // Reset for new interview
-            updateInterviewProgress(); // Clear progress display
-          }
-          interviewEndedByBackend = false; // Reset the flag
-        };
-
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          alert("WebSocket 連線錯誤，請檢查後端服務");
-          stopHeartbeat(); // Stop heartbeat
-          if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-          }
-          if (videoCaptureInterval) {
-            clearInterval(videoCaptureInterval);
-            videoCaptureInterval = null;
-          }
-          $('#start-interview').prop('disabled', false).text("開始模擬面試");
-          $('#record-btn').hide(); // Hide the record button
-          $('#end-interview').hide(); // Hide the end interview button
-        };
-
-      } catch (err) {
-        console.warn("啟動視訊失敗，改用語音模式", err);
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          streamMode = "語音僅";
-          $('#mode-label').text(`目前模式：${streamMode}`);
-
-          // Initialize WebSocket for audio-only with session ID
-          ws = new WebSocket(`${BACKEND_WS_URL}/ws?session_id=${sessionId}`);
-
-          ws.onopen = () => {
-            console.log("WebSocket connected (audio-only)");
-            $('#record-btn').show(); // Show the record button
-            $('#end-interview').show(); // Show the end interview button
-            startHeartbeat(); // Start heartbeat
-          };
-
-          ws.onmessage = (event) => {
-            console.log("Raw WebSocket message (audio-only):", event.data);
-            const data = JSON.parse(event.data);
-            console.log("Parsed WebSocket data (audio-only):", data);
-            if (data.text) {
-              if (data.speaker === "你") {
-                appendToChat("🗣️ 你", data.text);
-              } else {
-                appendToChat("🤖 AI 面試官", data.text);
-                if (!data.interview_ended) { // Only increment if it's a new question, not the final message
-                  currentQuestionNumber++;
-                  updateInterviewProgress();
-                }
-              }
-            }
-            if (data.audio_url) {
-              const ttsAudio = $('#tts-audio')[0];
-              ttsAudio.src = data.audio_url;
-              ttsAudio.load();
-              ttsAudio.play().catch(error => {
-                console.error("WebSocket audio playback failed:", error);
-                console.log("Audio networkState:", ttsAudio.networkState);
-                console.log("Audio readyState:", ttsAudio.readyState);
-              });
-            }
-            if (data.interview_ended) {
-              console.log("Interview ended signal received from backend (audio-only).");
-              interviewEndedByBackend = true; // Set the flag immediately
-              $('#record-btn').hide();
-              $('#end-interview').prop('disabled', true); // Disable the end interview button
-              $('#chat-box').append("<p class='text-green-500'>面試結束，正在生成報告...</p>");
-              console.log(`Attempting to get interview report for session ID: ${sessionId} (audio-only)`);
-              // Call backend to get report
-              $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
-                .done(function(report) {
-                  console.log("Successfully received interview report (audio-only):", report);
-                  displayReport(report);
-                })
-                .fail(function(err) {
-                  console.error("Failed to get interview report (audio-only):", err);
-                  $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
-                  $('#report-section').removeClass('hidden');
-                  $('#restart-interview').show();
-                })
-                .always(function() {
-                  // Frontend no longer explicitly closes WebSocket here; backend will close it.
-                });
-            }
-          };
-
-          ws.onclose = () => {
-            console.log("WebSocket disconnected (audio-only)");
-            stopHeartbeat(); // Stop heartbeat
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-              mediaRecorder.stop();
-            }
-            $('#start-interview').prop('disabled', false).text("開始模擬面試");
-            $('#record-btn').hide(); // Hide the record button
-            $('#end-interview').hide(); // Hide the end interview button
-
-            if (!interviewEndedByBackend && sessionId) { // If not ended by backend and session ID exists, try to get report
-              $('#chat-box').append("<p class='text-green-500'>連線中斷，正在嘗試獲取面試報告...</p>");
-              console.log(`Attempting to get interview report for session ID: ${sessionId} (onclose audio-only)`);
-              $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`)
-                .done(function(report) {
-                  console.log("Successfully received interview report (onclose audio-only):", report);
-                  displayReport(report);
-                })
-                .fail(function(err) {
-                  console.error("Failed to get interview report (onclose audio-only):", err);
-                  $('#report-content').html("<p class='text-red-500'>報告生成失敗。</p>");
-                  $('#report-section').removeClass('hidden');
-                  $('#restart-interview').show();
-                })
-                .always(function() {
-                  // Always reset session data after report attempt
-                  $('#selected-job').text("");
-                  selectedJob = null;
-                  sessionId = null;
-                  currentQuestionNumber = 0; // Reset for new interview
-                  totalQuestions = 0; // Reset for new interview
-                  updateInterviewProgress(); // Clear progress display
-                });
-            } else if (!interviewEndedByBackend) { // If not ended by backend but no session ID (e.g., interview not started properly)
-              $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
-              $('#selected-job').text("");
-              selectedJob = null;
-              sessionId = null;
-              currentQuestionNumber = 0; // Reset for new interview
-              totalQuestions = 0; // Reset for new interview
-              updateInterviewProgress(); // Clear progress display
-            }
-            interviewEndedByBackend = false; // Reset the flag
-          };
-
-          ws.onerror = (error) => {
-            console.error("WebSocket error (audio-only):", error);
-          alert("WebSocket 連線錯誤，請檢查後端服務");
-            stopHeartbeat(); // Stop heartbeat
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-              mediaRecorder.stop();
-            }
-            $('#start-interview').prop('disabled', false).text("開始模擬面試");
-            $('#record-btn').hide(); // Hide the record button
-            $('#end-interview').hide(); // Hide the end interview button
-          };
-
-        } catch (err2) {
-          alert("❌ 無法取得麥克風或攝影機權限");
-          $('#start-interview').prop('disabled', false).text("開始模擬面試");
-          return;
-        }
-      }
+        $('#record-btn').show();
+        $('#end-interview').show();
+        $('#start-interview').text("面試進行中...");
 
     } catch (err) {
-      console.error("啟動面試失敗：", err);
-      $('#chat-box').html("<p class='text-red-500'>❌ 面試啟動失敗</p>");
-      $('#start-interview').prop('disabled', false).text("開始模擬面試");
+        console.error("啟動面試失敗：", err);
+        $('#chat-box').html("<p class='text-red-500'>❌ 面試啟動失敗，請檢查後端服務或網路連線。</p>");
+        $('#start-interview').prop('disabled', false).text("開始模擬面試");
     }
-  });
+}
 
-  // Record button logic
-  $('#record-btn').on('click', async function () {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert("WebSocket 未連線，請先開始面試。");
-      return;
-    }
-
+function toggleRecording() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
-      // Stop recording
-      mediaRecorder.stop();
-      $(this).text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600");
-      console.log("Recording stopped.");
+        mediaRecorder.stop();
     } else {
-      // Start recording
-      audioChunks = []; // Clear previous chunks
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          ws.send(event.data); // Send each chunk immediately
-        }
-      };
-      mediaRecorder.onstop = () => {
-        console.log("Recording stopped. Final chunk sent (if any).");
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          // Capture and send the last video frame
-          const video = document.getElementById('webcam');
-          if (video && video.videoWidth > 0) { // Ensure video is active
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageDataURL = canvas.toDataURL('image/jpeg', 0.8);
-            ws.send(JSON.stringify({ type: "video_frame", data: imageDataURL }));
-            console.log("Sent final video frame to backend.");
-          }
-          ws.send(JSON.stringify({ type: "end_of_speech" }));
-          console.log("Sent end_of_speech signal to backend.");
-        }
-      };
-      mediaRecorder.start(1000); // Start recording and send data every 1 second (1000ms)
-      $(this).text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
-      console.log("Recording started.");
+        startRecording();
     }
-  });
+}
 
-  // End interview button logic
-  $('#end-interview').on('click', async function () {
-    if (interviewEndedByBackend) {
-      // If interview was ended by backend, just reset UI, report fetching is handled by onmessage
-      console.log("Manual end button clicked, but interview already ended by backend. Resetting UI (excluding session data). Keep chat-box content.");
-      // Only reset UI elements that don't interfere with report fetching
-      $('#start-interview').prop('disabled', false).text("開始模擬面試");
-      $('#record-btn').hide();
-      $('#end-interview').hide();
-      // Do NOT clear chat-box here, it should show "正在生成報告..."
-      // Do NOT clear selectedJob, sessionId here if interviewEndedByBackend is true
-    } else {
-      // If interview was not ended by backend, this is a manual end
-      console.log("Manual end button clicked. Sending end_interview signal to backend.");
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "end_interview", session_id: sessionId })); // Send a signal to backend
-        ws.close(); // Close WebSocket connection
-      }
-      // Reset all UI elements including session data for a true manual end
-      $('#start-interview').prop('disabled', false).text("開始模擬面試");
-      $('#record-btn').hide();
-      $('#end-interview').hide();
-      $('#chat-box').html("<p class='text-gray-500'>面試已結束。</p>");
-      $('#selected-job').text("");
-      selectedJob = null;
-      sessionId = null;
-      currentQuestionNumber = 0; // Reset for new interview
-      totalQuestions = 0; // Reset for new interview
-      updateInterviewProgress(); // Clear progress display
+async function handleEndInterview() {
+    if (!currentSessionId) return;
+
+    console.log("Ending interview manually.");
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
     }
-    interviewEndedByBackend = false; // Reset the flag for the next interview
-  });
 
-  // Restart interview button logic
-  $('#restart-interview').on('click', function() {
+    try {
+        await api_endInterview(currentSessionId);
+        alert("面試已手動結束。");
+    } catch (err) {
+        console.error("Error ending interview:", err);
+    } finally {
+        resetUIForNewInterview();
+    }
+}
+
+function handleRestartInterview() {
     $('#report-section').addClass('hidden');
     $('#report-content').empty();
     $('#restart-interview').hide();
-    $('#chat-box').empty();
-    $('#start-interview').prop('disabled', false).text("開始模擬面試");
-    $('#selected-job').text("");
-    selectedJob = null;
-    sessionId = null;
-    currentQuestionNumber = 0; // Reset for new interview
-    totalQuestions = 0; // Reset for new interview
-    updateInterviewProgress(); // Clear progress display
-  });
-});
+    resetUIForNewInterview();
+}
+
+// --- Media & UI Functions ---
+
+function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            audioChunks = []; // Clear previous chunks
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = handleRecordingStop;
+            mediaRecorder.start();
+            $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
+        })
+        .catch(err => {
+            console.error("無法取得麥克風權限:", err);
+            alert("無法取得麥克風權限，請檢查瀏覽器設定。");
+        });
+}
+
+async function handleRecordingStop() {
+    $('#record-btn').text("處理中...").prop('disabled', true);
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+    try {
+        const res = await api_submitAnswer(currentSessionId, audioBlob);
+        
+        // Display user's transcribed text (if backend provides it)
+        if (res.user_text) {
+             appendToChat("🗣️ 你", res.user_text);
+        }
+
+        if (res.interview_ended) {
+            // Handle end of interview
+            appendToChat("🤖 AI 面試官", res.text);
+            playAudio(res.audio_url);
+            $('#chat-box').append("<p class='text-green-500'>面試結束，正在生成報告...</p>");
+            $('#record-btn').hide();
+            $('#end-interview').hide();
+            const report = await api_getReport(currentSessionId);
+            displayReport(report);
+        } else {
+            // Handle next question
+            currentQuestionNumber++;
+            updateInterviewProgress();
+            appendToChat("🤖 AI 面試官", res.text);
+            playAudio(res.audio_url);
+        }
+    } catch (err) {
+        console.error("提交答案失敗:", err);
+        alert("提交答案失敗，請再試一次。");
+    } finally {
+        $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+    }
+}
 
 function appendToChat(speaker, message) {
-  $('#chat-box').append(`
-    <div>
-      <span class="font-semibold">${speaker}：</span>
-      <span>${message}</span>
-    </div>
-  `).scrollTop($('#chat-box')[0].scrollHeight);
+    $('#chat-box').append(`
+        <div class="my-2">
+          <span class="font-semibold">${speaker}：</span>
+          <span>${message}</span>
+        </div>
+    `).scrollTop($('#chat-box')[0].scrollHeight);
+}
+
+function playAudio(audioUrl) {
+    const ttsAudio = $('#tts-audio')[0];
+    ttsAudio.src = `${BACKEND_BASE_URL}${audioUrl}`;
+    ttsAudio.load();
+    ttsAudio.play().catch(error => console.error("Audio playback failed:", error));
 }
 
 function displayReport(report) {
-  console.log("displayReport function called with report:", report);
-  let reportHtml = `
-    <h3 class="text-lg font-bold mb-2">綜合評分：${report.overall_score.toFixed(2)} / 5</h3>
-    <p class="mb-4">是否錄取：<span class="font-bold ${report.hired ? 'text-green-600' : 'text-red-600'}">${report.hired ? '建議錄取' : '不建議錄取'}</span></p>
-    <h4 class="font-semibold mb-2">各項能力評分：</h4>
-    <ul class="list-disc list-inside">
-  `;
-  for (const dim in report.dimension_scores) {
-    reportHtml += `<li>${dim}：${report.dimension_scores[dim].toFixed(2)} / 5</li>`;
-  }
-  reportHtml += `</ul>`;
-  $('#report-content').html(reportHtml);
-  $('#report-section').removeClass('hidden');
-  $('#restart-interview').show();
+    if (report.error) {
+        $('#report-content').html(`<p class='text-red-500'>報告生成失敗: ${report.error}</p>`);
+    } else {
+        let reportHtml = `
+            <h3 class="text-lg font-bold mb-2">綜合評分：${report.overall_score.toFixed(2)} / 5</h3>
+            <p class="mb-4">是否錄取：<span class="font-bold ${report.hired ? 'text-green-600' : 'text-red-600'}">${report.hired ? '建議錄取' : '不建議錄取'}</span></p>
+            <h4 class="font-semibold mb-2">各項能力評分：</h4>
+            <ul class="list-disc list-inside">
+        `;
+        for (const dim in report.dimension_scores) {
+            reportHtml += `<li>${dim}：${report.dimension_scores[dim].toFixed(2)} / 5</li>`;
+        }
+        reportHtml += `</ul>`;
+        // Display conversation history if available
+        if(report.conversation_history) {
+            reportHtml += `<h4 class="font-semibold mt-4 mb-2">面試紀錄：</h4><div class="conversation-history border p-2 h-48 overflow-y-auto">`;
+            report.conversation_history.forEach(msg => {
+                const speaker = msg.role === 'user' ? '你' : 'AI';
+                const text = msg.parts[0].text;
+                reportHtml += `<p><strong>${speaker}:</strong> ${text}</p>`;
+            });
+            reportHtml += `</div>`;
+        }
+        $('#report-content').html(reportHtml);
+    }
+    $('#report-section').removeClass('hidden');
+    $('#restart-interview').show();
 }
 
 function updateInterviewProgress() {
-  if (totalQuestions > 0 && currentQuestionNumber <= totalQuestions) {
-    $('#interview-progress').text(`問題 ${currentQuestionNumber} / ${totalQuestions}`);
-  } else {
-    $('#interview-progress').text("");
-  }
+    if (totalQuestions > 0 && currentQuestionNumber <= totalQuestions) {
+        $('#interview-progress').text(`問題 ${currentQuestionNumber} / ${totalQuestions}`);
+    } else {
+        $('#interview-progress').text("");
+    }
+}
+
+function resetUIForNewInterview() {
+    $('#chat-box').empty();
+    $('#selected-job').text("");
+    $('#start-interview').prop('disabled', false).text("開始模擬面試");
+    $('#record-btn').hide();
+    $('#end-interview').hide();
+    selectedJob = null;
+    currentSessionId = null;
+    currentQuestionNumber = 0;
+    totalQuestions = 0;
+    updateInterviewProgress();
 }
