@@ -207,20 +207,28 @@ function startRecording() {
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
     $('#record-btn').prop('disabled', true); // Temporarily disable to prevent double click
 
-    let mimeType = 'audio/webm';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-        console.warn(`${mimeType} is not supported, trying audio/mp4.`);
-        mimeType = 'audio/mp4'; // Common alternative
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            console.warn(`${mimeType} is not supported, trying audio/ogg.`);
-            mimeType = 'audio/ogg'; // Another common alternative
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                console.error("No supported audio MIME type found for MediaRecorder.");
-                alert("您的瀏覽器不支持任何可用的音訊錄製格式。");
-                $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
-                return;
-            }
+    let mimeType = null;
+    const preferredMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg',
+        'audio/wav'
+    ];
+
+    for (const type of preferredMimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+            mimeType = type;
+            break;
         }
+        console.log(`Checking MIME type: ${type} - Supported: ${MediaRecorder.isTypeSupported(type)}`);
+    }
+
+    if (!mimeType) {
+        console.error("No supported audio MIME type found for MediaRecorder.");
+        alert("您的瀏覽器不支持任何可用的音訊錄製格式。");
+        $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+        return;
     }
     console.log(`Using MIME type: ${mimeType}`);
 
