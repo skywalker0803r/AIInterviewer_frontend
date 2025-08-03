@@ -26,43 +26,83 @@ $(document).ready(function () {
 // --- API Communication Functions ---
 
 async function api_getJobs(keyword) {
-    return await $.get(`${BACKEND_BASE_URL}/jobs?keyword=${encodeURIComponent(keyword)}`);
+    console.log(`[API] 正在請求職缺列表，關鍵字: ${keyword}`);
+    try {
+        const response = await $.get(`${BACKEND_BASE_URL}/jobs?keyword=${encodeURIComponent(keyword)}`);
+        console.log(`[API] 成功獲取職缺列表。`);
+        return response;
+    } catch (error) {
+        console.error(`[API] 獲取職缺列表失敗:`, error);
+        throw error;
+    }
 }
 
 async function api_startInterview(jobData) {
-    return await $.ajax({
-        url: `${BACKEND_BASE_URL}/start_interview`,
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify(jobData)
-    });
+    console.log(`[API] 正在發送啟動面試請求，職位: ${jobData.job.title}`);
+    try {
+        const response = await $.ajax({
+            url: `${BACKEND_BASE_URL}/start_interview`,
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify(jobData)
+        });
+        console.log(`[API] 啟動面試請求成功，會話ID: ${response.session_id}`);
+        return response;
+    } catch (error) {
+        console.error(`[API] 啟動面試請求失敗:`, error);
+        throw error;
+    }
 }
 
 async function api_submitAnswer(sessionId, audioBlob) {
+    console.log(`[API] 正在提交答案並獲取下一個問題，會話ID: ${sessionId}，音訊大小: ${audioBlob.size} 字節`);
     const formData = new FormData();
     formData.append('session_id', sessionId);
     formData.append('audio_file', audioBlob, 'user_answer.webm');
 
-    return await $.ajax({
-        url: `${BACKEND_BASE_URL}/submit_answer_and_get_next_question`,
-        method: "POST",
-        data: formData,
-        processData: false,
-        contentType: false
-    });
+    try {
+        const response = await $.ajax({
+            url: `${BACKEND_BASE_URL}/submit_answer_and_get_next_question`,
+            method: "POST",
+            data: formData,
+            processData: false,
+            contentType: false
+        });
+        console.log(`[API] 答案提交成功，收到下一個問題或面試結束通知。`);
+        return response;
+    } catch (error) {
+        console.error(`[API] 提交答案失敗:`, error);
+        throw error;
+    }
 }
 
 async function api_getReport(sessionId) {
-    return await $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`);
+    console.log(`[API] 正在請求面試報告，會話ID: ${sessionId}`);
+    try {
+        const response = await $.get(`${BACKEND_BASE_URL}/get_interview_report?session_id=${sessionId}`);
+        console.log(`[API] 成功獲取面試報告。`);
+        return response;
+    } catch (error) {
+        console.error(`[API] 獲取面試報告失敗:`, error);
+        throw error;
+    }
 }
 
 async function api_endInterview(sessionId) {
-    return await $.ajax({
-        url: `${BACKEND_BASE_URL}/end_interview`,
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ session_id: sessionId })
-    });
+    console.log(`[API] 正在發送結束面試請求，會話ID: ${sessionId}`);
+    try {
+        const response = await $.ajax({
+            url: `${BACKEND_BASE_URL}/end_interview`,
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ session_id: sessionId })
+        });
+        console.log(`[API] 結束面試請求成功。`);
+        return response;
+    } catch (error) {
+        console.error(`[API] 結束面試請求失敗:`, error);
+        throw error;
+    }
 }
 
 // --- Event Handlers ---
@@ -233,17 +273,17 @@ function handleRestartInterview() {
 // --- Media & UI Functions ---
 
 async function startRecording() {
-    console.log("startRecording called.");
+    console.log("[錄音] 呼叫 startRecording 函數。");
     
     // --- Update button state immediately ---
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
     $('#record-btn').prop('disabled', true); // Temporarily disable to prevent double click
 
     try {
+        console.log("[錄音] 嘗試獲取新的音訊串流用於錄音。");
         audioStreamForRecording = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log("New audio stream for recording obtained:", audioStreamForRecording);
-        console.log("audioStreamForRecording.active:", audioStreamForRecording.active);
-        console.log("audioStreamForRecording audio tracks:", audioStreamForRecording.getAudioTracks().length);
+        console.log("[錄音] 成功獲取音訊串流。串流狀態:", audioStreamForRecording.active);
+        console.log("[錄音] 音訊軌道數量:", audioStreamForRecording.getAudioTracks().length);
 
         const candidateMimeTypes = [
             'audio/webm;codecs=opus',
@@ -258,9 +298,9 @@ async function startRecording() {
         let selectedMimeType = null;
 
         for (const type of candidateMimeTypes) {
-            console.log(`Attempting to use MIME type: ${type}`);
+            console.log(`[錄音] 嘗試使用 MIME 類型: ${type}`);
             if (!MediaRecorder.isTypeSupported(type)) {
-                console.warn(`MIME type ${type} is not supported by this browser.`);
+                console.warn(`[錄音] MIME 類型 ${type} 不受此瀏覽器支援。`);
                 continue; // Skip to the next type if not supported
             }
 
@@ -268,16 +308,19 @@ async function startRecording() {
                 mediaRecorder = new MediaRecorder(audioStreamForRecording, { mimeType: type });
                 audioChunks = []; // Clear previous chunks
                 mediaRecorder.ondataavailable = event => {
-                    if (event.data.size > 0) audioChunks.push(event.data);
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        console.log(`[錄音] 接收到音訊數據塊，大小: ${event.data.size} 字節。`);
+                    }
                 };
                 mediaRecorder.onstop = handleRecordingStop;
                 mediaRecorder.start();
-                console.log(`MediaRecorder started successfully with MIME type: ${type}`);
+                console.log(`[錄音] MediaRecorder 成功啟動，使用 MIME 類型: ${type}`);
                 successfullyStarted = true;
                 selectedMimeType = type;
                 break; // Break the loop if successfully started
             } catch (e) {
-                console.error(`Error starting MediaRecorder with MIME type ${type}:`, e);
+                console.error(`[錄音] 啟動 MediaRecorder 失敗，MIME 類型 ${type}:`, e);
                 lastError = e; // Store the last error
                 // Continue to the next MIME type if start() fails
             }
@@ -285,9 +328,10 @@ async function startRecording() {
 
         if (successfullyStarted) {
             $('#record-btn').prop('disabled', false); // Re-enable button after successful start
+            console.info("[錄音] 錄音已開始。");
         } else {
             // If no MIME type worked
-            console.error("No supported audio MIME type could be started for MediaRecorder.");
+            console.error("[錄音] 沒有支援的音訊 MIME 類型可以啟動 MediaRecorder。");
             alert(`無法啟動錄音。請檢查麥克風設定或嘗試其他瀏覽器。最後的錯誤：${lastError ? lastError.message : '未知錯誤'}`);
             // Revert button state on error
             $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
@@ -295,10 +339,11 @@ async function startRecording() {
             if (audioStreamForRecording) {
                 audioStreamForRecording.getTracks().forEach(track => track.stop());
                 audioStreamForRecording = null;
+                console.warn("[錄音] 錄音失敗，已停止音訊串流。");
             }
         }
     } catch (err) {
-        console.error("Error getting audio stream for recording:", err);
+        console.error("[錄音] 獲取音訊串流失敗:", err);
         alert(`無法取得麥克風權限：${err.message}。請檢查瀏覽器設定並允許權限。`);
         // Revert button state on error
         $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
@@ -306,8 +351,10 @@ async function startRecording() {
 }
 
 async function handleRecordingStop() {
+    console.log("[錄音] 錄音已停止，開始處理音訊和圖像數據。");
     $('#record-btn').text("處理中...").prop('disabled', true);
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    console.log(`[錄音] 音訊 Blob 已建立，大小: ${audioBlob.size} 字節。`);
 
     let imageDataURL = ""; // Initialize with empty string
     const webcamVideo = $('#webcam')[0];
@@ -330,9 +377,11 @@ async function handleRecordingStop() {
     if (audioStreamForRecording) {
         audioStreamForRecording.getTracks().forEach(track => track.stop());
         audioStreamForRecording = null;
+        console.log("[錄音] 已停止用於錄音的音訊串流。");
     }
 
     try {
+        console.log("[API] 準備發送 FormData 到後端。");
         const formData = new FormData();
         formData.append('session_id', currentSessionId);
         formData.append('audio_file', audioBlob, 'user_answer.webm');
@@ -345,14 +394,16 @@ async function handleRecordingStop() {
             processData: false,
             contentType: false
         });
+        console.log("[API] 收到後端回應:", res);
         
         // Display user's transcribed text (if backend provides it)
         if (res.user_text) {
              appendToChat("🗣️ 你", res.user_text);
+             console.log(`[聊天] 顯示使用者轉錄文本: ${res.user_text}`);
         }
 
         if (res.interview_ended) {
-            // Handle end of interview
+            console.log("[面試] 面試已結束，開始生成報告。");
             appendToChat("🤖 AI 面試官", res.text);
             playAudio(res.audio_url);
             $('#chat-box').append("<p class='text-green-500'>面試結束，正在生成報告...</p>");
@@ -364,12 +415,14 @@ async function handleRecordingStop() {
             if (userMediaStream) {
                 userMediaStream.getTracks().forEach(track => track.stop());
                 userMediaStream = null;
+                console.log("[媒體] 面試結束，已停止所有媒體串流。");
             }
             $('#video-section').addClass('hidden');
         } else {
+            console.log("[面試] 獲取下一個問題。");
             // Handle next question
-            currentQuestionNumber++;
-            updateInterviewProgress();
+            // currentQuestionNumber++; // Removed as questions are dynamic
+            // updateInterviewProgress(); // Removed as questions are dynamic
             appendToChat("🤖 AI 面試官", res.text);
             playAudio(res.audio_url);
         }
@@ -378,6 +431,7 @@ async function handleRecordingStop() {
         alert("提交答案失敗，請再試一次。");
     } finally {
         $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+        console.log("[錄音] 錄音按鈕狀態已重置。");
     }
 }
 
@@ -391,15 +445,20 @@ function appendToChat(speaker, message) {
 }
 
 function playAudio(audioUrl) {
+    console.log(`[音訊] 嘗試播放音訊: ${audioUrl}`);
     const ttsAudio = $('#tts-audio')[0];
     ttsAudio.src = audioUrl;
     ttsAudio.load();
-    ttsAudio.play().catch(error => console.error("Audio playback failed:", error));
+    ttsAudio.play().then(() => {
+        console.log("[音訊] 音訊播放成功。");
+    }).catch(error => console.error("[音訊] 音訊播放失敗:", error));
 }
 
 function displayReport(report) {
+    console.log("[報告] 顯示面試報告。");
     if (report.error) {
         $('#report-content').html(`<p class='text-red-500'>報告生成失敗: ${report.error}</p>`);
+        console.error(`[報告] 報告生成失敗: ${report.error}`);
     } else {
         let reportHtml = `
             <h3 class="text-lg font-bold mb-2">綜合評分：${report.overall_score.toFixed(2)} / 5</h3>
@@ -422,20 +481,20 @@ function displayReport(report) {
             reportHtml += `</div>`;
         }
         $('#report-content').html(reportHtml);
+        console.info("[報告] 面試報告內容已成功渲染。");
     }
     $('#report-section').removeClass('hidden');
     $('#restart-interview').show();
+    console.log("[UI] 報告區塊已顯示，重新開始按鈕已顯示。");
 }
 
 function updateInterviewProgress() {
-    if (totalQuestions > 0 && currentQuestionNumber <= totalQuestions) {
-        $('#interview-progress').text(`問題 ${currentQuestionNumber} / ${totalQuestions}`);
-    } else {
-        $('#interview-progress').text("");
-    }
+    console.log("[UI] 面試進度更新 (已移除問題計數顯示)。");
+    $('#interview-progress').text(""); // Clear any previous progress text
 }
 
 function resetUIForNewInterview() {
+    console.log("[UI] 重置使用者介面以開始新的面試。");
     $('#chat-box').empty();
     $('#selected-job').text("");
     $('#start-interview').prop('disabled', false).text("開始模擬面試");
@@ -443,18 +502,21 @@ function resetUIForNewInterview() {
     $('#end-interview').hide();
     selectedJob = null;
     currentSessionId = null;
-    currentQuestionNumber = 0;
-    totalQuestions = 0;
+    currentQuestionNumber = 0; // Reset for consistency, though not used for display
+    totalQuestions = 0; // Reset for consistency, though not used for display
     updateInterviewProgress();
 
     // Stop all tracks and clear the stream when resetting UI
     if (userMediaStream) {
         userMediaStream.getTracks().forEach(track => track.stop());
         userMediaStream = null;
+        console.log("[媒體] 已停止使用者媒體串流 (攝影機/麥克風)。");
     }
     if (audioStreamForRecording) {
         audioStreamForRecording.getTracks().forEach(track => track.stop());
         audioStreamForRecording = null;
+        console.log("[媒體] 已停止錄音專用音訊串流。");
     }
     $('#video-section').addClass('hidden');
+    console.info("[UI] 使用者介面重置完成。");
 }
