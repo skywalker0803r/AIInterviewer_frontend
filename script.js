@@ -176,9 +176,7 @@ $(document).ready(function () {
                   $('#restart-interview').show();
                 })
                 .always(function() {
-                  if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.close(); // Explicitly close WebSocket after report fetching
-                  }
+                  // Frontend no longer explicitly closes WebSocket here; backend will close it.
                 });
             }
           };
@@ -310,9 +308,7 @@ $(document).ready(function () {
                   $('#restart-interview').show();
                 })
                 .always(function() {
-                  if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.close(); // Explicitly close WebSocket after report fetching
-                  }
+                  // Frontend no longer explicitly closes WebSocket here; backend will close it.
                 });
             }
           };
