@@ -116,11 +116,13 @@ async function handleStartInterview() {
             const webcamVideo = $('#webcam')[0];
             webcamVideo.srcObject = userMediaStream;
             $('#video-section').removeClass('hidden');
+            console.log("Successfully obtained audio and video stream.");
         } catch (videoErr) {
             console.warn("無法取得攝影機權限或沒有攝影機，嘗試純音訊模式：", videoErr);
             // If video fails, try to get only audio
             userMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             $('#video-section').addClass('hidden'); // Hide video section if only audio
+            console.log("Successfully obtained audio-only stream.");
         }
 
         const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description });
@@ -152,9 +154,12 @@ async function handleStartInterview() {
 }
 
 function toggleRecording() {
+    console.log("toggleRecording called.");
     if (mediaRecorder && mediaRecorder.state === 'recording') {
+        console.log("MediaRecorder is recording, stopping.");
         mediaRecorder.stop();
     } else {
+        console.log("MediaRecorder is not recording, starting.");
         startRecording();
     }
 }
@@ -187,10 +192,13 @@ function handleRestartInterview() {
 // --- Media & UI Functions ---
 
 function startRecording() {
+    console.log("startRecording called.");
     if (!userMediaStream) {
+        console.error("userMediaStream is null or undefined.");
         alert("麥克風或攝影機未準備好。請先開始面試並允許權限。");
         return;
     }
+    console.log("userMediaStream is available.", userMediaStream);
 
     mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: 'audio/webm' });
     audioChunks = []; // Clear previous chunks
@@ -199,6 +207,7 @@ function startRecording() {
     };
     mediaRecorder.onstop = handleRecordingStop;
     mediaRecorder.start();
+    console.log("MediaRecorder started. Updating button text and class.");
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
 }
 
