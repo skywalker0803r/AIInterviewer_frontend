@@ -313,6 +313,7 @@ async function handleRecordingStop() {
     const webcamVideo = $('#webcam')[0];
 
     // Only capture image if video stream is active and has dimensions
+    console.log("攝影機視訊元素尺寸 (捕獲前):", webcamVideo.videoWidth, webcamVideo.videoHeight);
     if (userMediaStream && userMediaStream.getVideoTracks().length > 0 && webcamVideo.videoWidth > 0 && webcamVideo.videoHeight > 0) {
         const canvas = document.createElement('canvas');
         canvas.width = webcamVideo.videoWidth;
@@ -320,6 +321,9 @@ async function handleRecordingStop() {
         const context = canvas.getContext('2d');
         context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
         imageDataURL = canvas.toDataURL('image/jpeg').split(',')[1]; // Get JPEG data URL and remove prefix
+        console.log("捕獲的 imageDataURL 長度:", imageDataURL.length);
+    } else {
+        console.log("跳過圖像捕獲：userMediaStream 啟用:", !!userMediaStream, "視訊軌道數量:", userMediaStream ? userMediaStream.getVideoTracks().length : 0, "攝影機尺寸:", webcamVideo.videoWidth, webcamVideo.videoHeight);
     }
 
     // Stop the audio stream used for recording
