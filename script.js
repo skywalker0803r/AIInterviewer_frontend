@@ -207,8 +207,7 @@ function startRecording() {
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
     $('#record-btn').prop('disabled', true); // Temporarily disable to prevent double click
 
-    let mimeType = null;
-    const preferredMimeTypes = [
+    const candidateMimeTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/mp4',
@@ -216,35 +215,42 @@ function startRecording() {
         'audio/wav'
     ];
 
-    for (const type of preferredMimeTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-            mimeType = type;
-            break;
+    let successfullyStarted = false;
+    let lastError = null;
+    let selectedMimeType = null;
+
+    for (const type of candidateMimeTypes) {
+        console.log(`Attempting to use MIME type: ${type}`);
+        if (!MediaRecorder.isTypeSupported(type)) {
+            console.warn(`MIME type ${type} is not supported by this browser.`);
+            continue; // Skip to the next type if not supported
         }
-        console.log(`Checking MIME type: ${type} - Supported: ${MediaRecorder.isTypeSupported(type)}`);
+
+        try {
+            mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: type });
+            audioChunks = []; // Clear previous chunks
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = handleRecordingStop;
+            mediaRecorder.start();
+            console.log(`MediaRecorder started successfully with MIME type: ${type}`);
+            successfullyStarted = true;
+            selectedMimeType = type;
+            break; // Break the loop if successfully started
+        } catch (e) {
+            console.error(`Error starting MediaRecorder with MIME type ${type}:`, e);
+            lastError = e; // Store the last error
+            // Continue to the next MIME type if start() fails
+        }
     }
 
-    if (!mimeType) {
-        console.error("No supported audio MIME type found for MediaRecorder.");
-        alert("您的瀏覽器不支持任何可用的音訊錄製格式。");
-        $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
-        return;
-    }
-    console.log(`Using MIME type: ${mimeType}`);
-
-    try {
-        mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: mimeType });
-        audioChunks = []; // Clear previous chunks
-        mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) audioChunks.push(event.data);
-        };
-        mediaRecorder.onstop = handleRecordingStop;
-        mediaRecorder.start();
-        console.log("MediaRecorder started successfully.");
+    if (successfullyStarted) {
         $('#record-btn').prop('disabled', false); // Re-enable button after successful start
-    } catch (e) {
-        console.error("Error starting MediaRecorder:", e);
-        alert(`無法啟動錄音：${e.message}。請檢查麥克風設定或嘗試其他瀏覽器。`);
+    } else {
+        // If no MIME type worked
+        console.error("No supported audio MIME type could be started for MediaRecorder.");
+        alert(`無法啟動錄音。請檢查麥克風設定或嘗試其他瀏覽器。最後的錯誤：${lastError ? lastError.message : '未知錯誤'}`);
         // Revert button state on error
         $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
     }
