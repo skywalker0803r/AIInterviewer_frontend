@@ -68,15 +68,26 @@ async function api_endInterview(sessionId) {
 // --- Event Handlers ---
 
 async function handleSearchJobs() {
+    console.log("點擊了 '搜尋職缺' 按鈕。");
     const keyword = $('#job-input').val().trim();
-    if (!keyword) return alert("請輸入職缺名稱");
+    if (!keyword) {
+        alert("請輸入職缺名稱");
+        console.warn("職缺關鍵字為空。");
+        return;
+    }
 
     $('#job-list').html("<p class='text-gray-500'>正在搜尋中...</p>");
+    console.log(`發送職缺搜尋請求，關鍵字: '{keyword}'。`);
+    const startTime = performance.now();
     try {
         const res = await api_getJobs(keyword);
+        const endTime = performance.now();
+        console.log(`職缺搜尋請求完成，耗時: ${(endTime - startTime).toFixed(2)} 毫秒。`);
+        console.log("接收到職缺數據:", res);
         const jobs = res.jobs;
         if (!jobs || jobs.length === 0) {
             $('#job-list').html("<p class='text-red-500'>查無職缺</p>");
+            console.info("未找到職缺。");
             return;
         }
         // Store jobs data on a parent element to access later
@@ -89,6 +100,7 @@ async function handleSearchJobs() {
             </div>
         `).join('');
         $('#job-list').html(list);
+        console.info(`成功顯示 ${jobs.length} 個職缺。`);
     } catch (err) {
         console.error("職缺搜尋失敗：", err);
         $('#job-list').html("<p class='text-red-500'>搜尋錯誤，請稍後再試</p>");
@@ -96,19 +108,26 @@ async function handleSearchJobs() {
 }
 
 function handleSelectJob() {
+    console.log("點擊了職缺列表項目。");
     const index = $(this).data('index');
     const jobs = $('#job-list').data('jobs');
     selectedJob = jobs[index];
     $('#selected-job').text(`✅ 已選擇職缺：${selectedJob.title} @ ${selectedJob.company}`);
+    console.info(`已選擇職缺: ${selectedJob.title}，公司: ${selectedJob.company}。`);
 }
 
 async function handleStartInterview() {
+    console.log("點擊了 '開始模擬面試' 按鈕。");
     if (!selectedJob) {
-        return alert("請先選擇一個職缺再開始面試");
+        alert("請先選擇一個職缺再開始面試");
+        console.warn("未選擇職缺，無法開始面試。");
+        return;
     }
 
     $('#start-interview').prop('disabled', true).text("面試準備中...");
     $('#chat-box').html("<p class='text-blue-500'>⏳ 正在為您客製化面試問題，請稍候...</p>");
+    console.log("開始請求麥克風和攝影機權限...");
+    const mediaPermissionStartTime = performance.now();
 
     try {
         // Try to get both audio and video
@@ -117,28 +136,37 @@ async function handleStartInterview() {
             const webcamVideo = $('#webcam')[0];
             webcamVideo.srcObject = userMediaStream;
             $('#video-section').removeClass('hidden');
-            console.log("Successfully obtained audio and video stream.");
+            console.log("成功獲取音訊和視訊串流。");
         } catch (videoErr) {
             console.warn("無法取得攝影機權限或沒有攝影機，嘗試純音訊模式：", videoErr);
             // If video fails, try to get only audio
             userMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             $('#video-section').addClass('hidden'); // Hide video section if only audio
-            console.log("Successfully obtained audio-only stream.");
+            console.log("成功獲取純音訊串流。");
         }
+        const mediaPermissionEndTime = performance.now();
+        console.log(`獲取媒體權限耗時: ${(mediaPermissionEndTime - mediaPermissionStartTime).toFixed(2)} 毫秒。`);
 
+        console.log("發送啟動面試請求到後端...");
+        const apiStartTime = performance.now();
         const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description });
+        const apiEndTime = performance.now();
+        console.log(`啟動面試 API 請求完成，耗時: ${(apiEndTime - apiStartTime).toFixed(2)} 毫秒。`);
+        console.log("接收到啟動面試回應:", res);
         
         currentSessionId = res.session_id;
         totalQuestions = res.first_question.total_questions;
         currentQuestionNumber = 1;
 
         appendToChat("🤖 AI 面試官", res.first_question.text);
+        console.log(`播放 AI 面試官的第一個問題音訊: ${res.first_question.audio_url}`);
         playAudio(res.first_question.audio_url);
         updateInterviewProgress();
 
         $('#record-btn').show();
         $('#end-interview').show();
         $('#start-interview').text("面試進行中...");
+        console.info(`面試會話 ${currentSessionId} 已成功啟動。`);
 
     } catch (err) {
         console.error("啟動面試失敗或無法取得麥克風權限：", err);
@@ -155,39 +183,51 @@ async function handleStartInterview() {
 }
 
 function toggleRecording() {
-    console.log("toggleRecording called.");
+    console.log("點擊了 '錄音' 按鈕。當前錄音狀態: ", mediaRecorder ? mediaRecorder.state : "未初始化");
     if (mediaRecorder && mediaRecorder.state === 'recording') {
-        console.log("MediaRecorder is recording, stopping.");
+        console.log("MediaRecorder 正在錄音，停止錄音。");
         mediaRecorder.stop();
     } else {
-        console.log("MediaRecorder is not recording, starting.");
+        console.log("MediaRecorder 未錄音，開始錄音。");
         startRecording();
     }
 }
 
 async function handleEndInterview() {
-    if (!currentSessionId) return;
+    console.log("點擊了 '結束面試' 按鈕。");
+    if (!currentSessionId) {
+        console.warn("無效的會話ID，無法結束面試。");
+        return;
+    }
 
-    console.log("Ending interview manually.");
+    console.log("手動結束面試。會話ID: ", currentSessionId);
     if (mediaRecorder && mediaRecorder.state === 'recording') {
+        console.log("停止錄音。");
         mediaRecorder.stop();
     }
 
     try {
+        console.log(`發送結束面試請求到後端，會話ID: ${currentSessionId}。`);
+        const startTime = performance.now();
         await api_endInterview(currentSessionId);
+        const endTime = performance.now();
+        console.log(`結束面試 API 請求完成，耗時: ${(endTime - startTime).toFixed(2)} 毫秒。`);
         alert("面試已手動結束。");
     } catch (err) {
-        console.error("Error ending interview:", err);
+        console.error("結束面試失敗：", err);
     } finally {
         resetUIForNewInterview();
+        console.info("面試結束後，UI 已重置。");
     }
 }
 
 function handleRestartInterview() {
+    console.log("點擊了 '重新開始面試' 按鈕。");
     $('#report-section').addClass('hidden');
     $('#report-content').empty();
     $('#restart-interview').hide();
     resetUIForNewInterview();
+    console.info("面試已重置，準備開始新的面試。");
 }
 
 // --- Media & UI Functions ---
