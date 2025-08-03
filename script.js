@@ -9,6 +9,7 @@ let currentSessionId = null;
 let currentQuestionNumber = 0;
 let totalQuestions = 0;
 let userMediaStream = null; // New global variable to store the media stream
+let audioStreamForRecording = null; // New: For the stream used by MediaRecorder
 
 // --- DOM Ready ---
 $(document).ready(function () {
@@ -191,66 +192,74 @@ function handleRestartInterview() {
 
 // --- Media & UI Functions ---
 
-function startRecording() {
+async function startRecording() {
     console.log("startRecording called.");
-    if (!userMediaStream) {
-        console.error("userMediaStream is null or undefined.");
-        alert("麥克風或攝影機未準備好。請先開始面試並允許權限。");
-        return;
-    }
-    console.log("userMediaStream is available.", userMediaStream);
-    console.log("userMediaStream.active:", userMediaStream.active);
-    console.log("userMediaStream audio tracks:", userMediaStream.getAudioTracks().length);
-    console.log("userMediaStream video tracks:", userMediaStream.getVideoTracks().length);
-
+    
     // --- Update button state immediately ---
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
     $('#record-btn').prop('disabled', true); // Temporarily disable to prevent double click
 
-    const candidateMimeTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg',
-        'audio/wav'
-    ];
+    try {
+        audioStreamForRecording = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("New audio stream for recording obtained:", audioStreamForRecording);
+        console.log("audioStreamForRecording.active:", audioStreamForRecording.active);
+        console.log("audioStreamForRecording audio tracks:", audioStreamForRecording.getAudioTracks().length);
 
-    let successfullyStarted = false;
-    let lastError = null;
-    let selectedMimeType = null;
+        const candidateMimeTypes = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/mp4',
+            'audio/ogg',
+            'audio/wav'
+        ];
 
-    for (const type of candidateMimeTypes) {
-        console.log(`Attempting to use MIME type: ${type}`);
-        if (!MediaRecorder.isTypeSupported(type)) {
-            console.warn(`MIME type ${type} is not supported by this browser.`);
-            continue; // Skip to the next type if not supported
+        let successfullyStarted = false;
+        let lastError = null;
+        let selectedMimeType = null;
+
+        for (const type of candidateMimeTypes) {
+            console.log(`Attempting to use MIME type: ${type}`);
+            if (!MediaRecorder.isTypeSupported(type)) {
+                console.warn(`MIME type ${type} is not supported by this browser.`);
+                continue; // Skip to the next type if not supported
+            }
+
+            try {
+                mediaRecorder = new MediaRecorder(audioStreamForRecording, { mimeType: type });
+                audioChunks = []; // Clear previous chunks
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) audioChunks.push(event.data);
+                };
+                mediaRecorder.onstop = handleRecordingStop;
+                mediaRecorder.start();
+                console.log(`MediaRecorder started successfully with MIME type: ${type}`);
+                successfullyStarted = true;
+                selectedMimeType = type;
+                break; // Break the loop if successfully started
+            } catch (e) {
+                console.error(`Error starting MediaRecorder with MIME type ${type}:`, e);
+                lastError = e; // Store the last error
+                // Continue to the next MIME type if start() fails
+            }
         }
 
-        try {
-            mediaRecorder = new MediaRecorder(userMediaStream, { mimeType: type });
-            audioChunks = []; // Clear previous chunks
-            mediaRecorder.ondataavailable = event => {
-                if (event.data.size > 0) audioChunks.push(event.data);
-            };
-            mediaRecorder.onstop = handleRecordingStop;
-            mediaRecorder.start();
-            console.log(`MediaRecorder started successfully with MIME type: ${type}`);
-            successfullyStarted = true;
-            selectedMimeType = type;
-            break; // Break the loop if successfully started
-        } catch (e) {
-            console.error(`Error starting MediaRecorder with MIME type ${type}:`, e);
-            lastError = e; // Store the last error
-            // Continue to the next MIME type if start() fails
+        if (successfullyStarted) {
+            $('#record-btn').prop('disabled', false); // Re-enable button after successful start
+        } else {
+            // If no MIME type worked
+            console.error("No supported audio MIME type could be started for MediaRecorder.");
+            alert(`無法啟動錄音。請檢查麥克風設定或嘗試其他瀏覽器。最後的錯誤：${lastError ? lastError.message : '未知錯誤'}`);
+            // Revert button state on error
+            $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
+            // Stop the newly acquired audio stream if recording failed
+            if (audioStreamForRecording) {
+                audioStreamForRecording.getTracks().forEach(track => track.stop());
+                audioStreamForRecording = null;
+            }
         }
-    }
-
-    if (successfullyStarted) {
-        $('#record-btn').prop('disabled', false); // Re-enable button after successful start
-    } else {
-        // If no MIME type worked
-        console.error("No supported audio MIME type could be started for MediaRecorder.");
-        alert(`無法啟動錄音。請檢查麥克風設定或嘗試其他瀏覽器。最後的錯誤：${lastError ? lastError.message : '未知錯誤'}`);
+    } catch (err) {
+        console.error("Error getting audio stream for recording:", err);
+        alert(`無法取得麥克風權限：${err.message}。請檢查瀏覽器設定並允許權限。`);
         // Revert button state on error
         $('#record-btn').text("開始說話").removeClass("bg-red-600").addClass("bg-purple-600").prop('disabled', false);
     }
@@ -271,6 +280,12 @@ async function handleRecordingStop() {
         const context = canvas.getContext('2d');
         context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
         imageDataURL = canvas.toDataURL('image/jpeg').split(',')[1]; // Get JPEG data URL and remove prefix
+    }
+
+    // Stop the audio stream used for recording
+    if (audioStreamForRecording) {
+        audioStreamForRecording.getTracks().forEach(track => track.stop());
+        audioStreamForRecording = null;
     }
 
     try {
@@ -392,6 +407,10 @@ function resetUIForNewInterview() {
     if (userMediaStream) {
         userMediaStream.getTracks().forEach(track => track.stop());
         userMediaStream = null;
+    }
+    if (audioStreamForRecording) {
+        audioStreamForRecording.getTracks().forEach(track => track.stop());
+        audioStreamForRecording = null;
     }
     $('#video-section').addClass('hidden');
 }
