@@ -166,8 +166,13 @@ function handleRestartInterview() {
 // --- Media & UI Functions ---
 
 function startRecording() {
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    navigator.mediaDevices.getUserMedia({ audio: true, video: true })
         .then(stream => {
+            // Display video stream
+            const webcamVideo = $('#webcam')[0];
+            webcamVideo.srcObject = stream;
+            $('#video-section').removeClass('hidden');
+
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             audioChunks = []; // Clear previous chunks
             mediaRecorder.ondataavailable = event => {
@@ -178,8 +183,8 @@ function startRecording() {
             $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
         })
         .catch(err => {
-            console.error("無法取得麥克風權限:", err);
-            alert("無法取得麥克風權限，請檢查瀏覽器設定。");
+            console.error("無法取得麥克風或攝影機權限:", err);
+            alert("無法取得麥克風或攝影機權限，請檢查瀏覽器設定。");
         });
 }
 
@@ -187,8 +192,35 @@ async function handleRecordingStop() {
     $('#record-btn').text("處理中...").prop('disabled', true);
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
 
+    // Capture a frame from the video stream
+    const webcamVideo = $('#webcam')[0];
+    const canvas = document.createElement('canvas');
+    canvas.width = webcamVideo.videoWidth;
+    canvas.height = webcamVideo.videoHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+    const imageDataURL = canvas.toDataURL('image/jpeg'); // Get JPEG data URL
+
+    // Stop all tracks to turn off camera/mic
+    if (webcamVideo.srcObject) {
+        webcamVideo.srcObject.getTracks().forEach(track => track.stop());
+        webcamVideo.srcObject = null;
+    }
+    $('#video-section').addClass('hidden');
+
     try {
-        const res = await api_submitAnswer(currentSessionId, audioBlob);
+        const formData = new FormData();
+        formData.append('session_id', currentSessionId);
+        formData.append('audio_file', audioBlob, 'user_answer.webm');
+        formData.append('image_data', imageDataURL); // Append image data
+
+        const res = await $.ajax({
+            url: `${BACKEND_BASE_URL}/submit_answer_and_get_next_question`,
+            method: "POST",
+            data: formData,
+            processData: false,
+            contentType: false
+        });
         
         // Display user's transcribed text (if backend provides it)
         if (res.user_text) {
