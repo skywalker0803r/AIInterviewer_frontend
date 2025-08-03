@@ -10,6 +10,29 @@ let sessionId = null; // New: To store the session ID
 let interviewEndedByBackend = false; // New: Flag to indicate if interview ended by backend signal
 let videoCaptureInterval = null; // New: To store the video capture interval ID
 
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+let heartbeatIntervalId = null;
+
+function startHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+  }
+  heartbeatIntervalId = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+      console.log("Sent WebSocket ping.");
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+    console.log("Stopped WebSocket heartbeat.");
+  }
+}
+
 $(document).ready(function () {
   $('#search-btn').on('click', async function () {
     const keyword = $('#job-input').val().trim();
@@ -100,6 +123,7 @@ $(document).ready(function () {
           console.log("WebSocket connected");
           $('#record-btn').show(); // Show the record button
           $('#end-interview').show(); // Show the end interview button
+          startHeartbeat(); // Start heartbeat
         };
 
         ws.onmessage = (event) => {
@@ -152,6 +176,7 @@ $(document).ready(function () {
 
         ws.onclose = () => {
           console.log("WebSocket disconnected. interviewEndedByBackend:", interviewEndedByBackend);
+          stopHeartbeat(); // Stop heartbeat
           if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
           }
@@ -195,6 +220,7 @@ $(document).ready(function () {
         ws.onerror = (error) => {
           console.error("WebSocket error:", error);
           alert("WebSocket 連線錯誤，請檢查後端服務");
+          stopHeartbeat(); // Stop heartbeat
           if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
           }
@@ -221,6 +247,7 @@ $(document).ready(function () {
             console.log("WebSocket connected (audio-only)");
             $('#record-btn').show(); // Show the record button
             $('#end-interview').show(); // Show the end interview button
+            startHeartbeat(); // Start heartbeat
           };
 
           ws.onmessage = (event) => {
@@ -273,6 +300,7 @@ $(document).ready(function () {
 
           ws.onclose = () => {
             console.log("WebSocket disconnected (audio-only)");
+            stopHeartbeat(); // Stop heartbeat
             if (mediaRecorder && mediaRecorder.state === 'recording') {
               mediaRecorder.stop();
             }
@@ -312,6 +340,7 @@ $(document).ready(function () {
           ws.onerror = (error) => {
             console.error("WebSocket error (audio-only):", error);
           alert("WebSocket 連線錯誤，請檢查後端服務");
+            stopHeartbeat(); // Stop heartbeat
             if (mediaRecorder && mediaRecorder.state === 'recording') {
               mediaRecorder.stop();
             }
