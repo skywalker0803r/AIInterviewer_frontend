@@ -199,6 +199,9 @@ function startRecording() {
         return;
     }
     console.log("userMediaStream is available.", userMediaStream);
+    console.log("userMediaStream.active:", userMediaStream.active);
+    console.log("userMediaStream audio tracks:", userMediaStream.getAudioTracks().length);
+    console.log("userMediaStream video tracks:", userMediaStream.getVideoTracks().length);
 
     // --- Update button state immediately ---
     $('#record-btn').text("結束說話").removeClass("bg-purple-600").addClass("bg-red-600");
