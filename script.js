@@ -1,4 +1,4 @@
-const BACKEND_BASE_URL = "https://e255da7eb7aa.ngrok-free.app";
+const BACKEND_BASE_URL = "https://aiinterviewer-backend-924124779607.asia-east1.run.app";
 
 
 // --- Global State ---
