@@ -164,6 +164,9 @@ async function handleStartInterview() {
         return;
     }
 
+    const selectedModel = $('#model-select').val();
+    console.log(`[UI] 選擇的模型: ${selectedModel}`);
+
     $('#start-interview').prop('disabled', true).text("面試準備中...");
     $('#chat-box').html("<p class='text-blue-500'>⏳ 正在為您客製化面試問題，請稍候...</p>");
     console.log("開始請求麥克風和攝影機權限...");
@@ -189,14 +192,14 @@ async function handleStartInterview() {
 
         console.log("發送啟動面試請求到後端...");
         const apiStartTime = performance.now();
-        const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description });
+        const res = await api_startInterview({ job: selectedJob, job_description: selectedJob.description, model_name: selectedModel });
         const apiEndTime = performance.now();
         console.log(`啟動面試 API 請求完成，耗時: ${(apiEndTime - apiStartTime).toFixed(2)} 毫秒。`);
         console.log("接收到啟動面試回應:", res);
         
         currentSessionId = res.session_id;
-        totalQuestions = res.first_question.total_questions;
-        currentQuestionNumber = 1;
+        // totalQuestions = res.first_question.total_questions; // Removed as questions are dynamic
+        // currentQuestionNumber = 1; // Removed as questions are dynamic
 
         appendToChat("🤖 AI 面試官", res.first_question.text);
         console.log(`播放 AI 面試官的第一個問題音訊: ${res.first_question.audio_url}`);
