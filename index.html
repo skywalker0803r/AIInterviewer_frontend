@@ -8,8 +8,10 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <style>
     #chat-box {
+      overflow-y: scroll; /* Ensure vertical scrolling is always enabled */
       -webkit-overflow-scrolling: touch; /* For smoother scrolling on iOS */
       overscroll-behavior-y: contain; /* Prevents scroll chaining */
+      touch-action: pan-y; /* Allows vertical scrolling on touch devices */
     }
   </style>
 </head>
