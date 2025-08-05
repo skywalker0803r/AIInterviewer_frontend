@@ -475,7 +475,7 @@ function displayReport(report) {
         reportHtml += `</ul>`;
         // Display conversation history if available
         if(report.conversation_history) {
-            reportHtml += `<h4 class="font-semibold mt-4 mb-2">面試紀錄：</h4><div class="conversation-history border p-2 h-48 overflow-y-auto">`;
+            reportHtml += `<h4 class="font-semibold mt-4 mb-2">面試紀錄：</h4><div class="conversation-history border p-2 h-48" style="height: 12rem; overflow-y: auto !important;">`;
             report.conversation_history.forEach(msg => {
                 const speaker = msg.role === 'user' ? '你' : 'AI';
                 const text = msg.parts[0].text;
